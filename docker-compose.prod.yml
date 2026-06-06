@@ -1,0 +1,70 @@
+# Продакшен — деплой на Hetzner.
+# fenix-nginx (Nginx Proxy Manager) на сети aziral-network роутит books.aziral.com → aziral-books-backend.
+
+services:
+  aziral-books-postgres:
+    image: postgres:17-alpine
+    container_name: aziral-books-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aziral
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
+      POSTGRES_DB: aziral_books
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - aziral-books-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aziral -d aziral_books"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  aziral-books-meili:
+    image: getmeili/meilisearch:v1.11
+    container_name: aziral-books-meili
+    restart: unless-stopped
+    environment:
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:?required}
+      MEILI_ENV: production
+    volumes:
+      - meilidata:/meili_data
+    networks:
+      - aziral-books-internal
+
+  aziral-books-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aziral-books-backend
+    restart: unless-stopped
+    environment:
+      PORT: 8080
+      NODE_ENV: production
+      LOG_LEVEL: info
+      DATABASE_URL: postgres://aziral:${POSTGRES_PASSWORD:?required}@aziral-books-postgres:5432/aziral_books
+      MEILI_HOST: http://aziral-books-meili:7700
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:?required}
+      JWT_SECRET: ${JWT_SECRET:?required}
+      STORAGE_BACKEND: local
+      STORAGE_LOCAL_PATH: /storage
+    volumes:
+      - /var/aziral-books/storage:/storage
+    depends_on:
+      aziral-books-postgres:
+        condition: service_healthy
+    networks:
+      - aziral-books-internal
+      - aziral-network
+
+volumes:
+  pgdata:
+  meilidata:
+
+networks:
+  # внутренняя — только backend+db+meili видят друг друга
+  aziral-books-internal:
+    driver: bridge
+  # внешняя — NPM (fenix-nginx) проксирует books.aziral.com сюда
+  aziral-network:
+    external: true
