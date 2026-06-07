@@ -25,9 +25,10 @@ jobs:
 
       - name: Rsync source to server
         run: |
-          rsync -avz --delete \
+          # NB: no --delete — Docker creates root-owned .pnpm-store on server.
+          rsync -avz \
             --exclude node_modules --exclude .git --exclude dist --exclude .env \
-            --exclude .github \
+            --exclude .github --exclude .pnpm-store --exclude '*.log' \
             -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
             ./ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/aziral-books/backend/
 
