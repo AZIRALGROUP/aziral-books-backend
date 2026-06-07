@@ -1,0 +1,13 @@
+[Unit]
+Description=Aziral Books catalog indexer (one-shot)
+Wants=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=olzhas
+WorkingDirectory=/var/www/aziral-books/backend
+ExecStart=/var/www/aziral-books/backend/scripts/run-indexer.sh
+TimeoutStartSec=2h
+StandardOutput=append:/var/log/aziral-books-indexer.log
+StandardError=append:/var/log/aziral-books-indexer.log

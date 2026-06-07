@@ -1,0 +1,15 @@
+[Unit]
+Description=Run Aziral Books catalog indexer daily
+Requires=aziral-books-indexer.service
+
+[Timer]
+# Запуск каждый день в 03:30 локального времени сервера.
+# Persistent=true → если сервер был выключен в момент срабатывания, таймер
+# запустит сервис при старте.
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+RandomizedDelaySec=15min
+Unit=aziral-books-indexer.service
+
+[Install]
+WantedBy=timers.target
