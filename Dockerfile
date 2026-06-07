@@ -6,7 +6,9 @@ WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@11.1.1 --activate
 
 COPY package.json pnpm-lock.yaml* ./
-RUN pnpm install --frozen-lockfile=false
+# --ignore-scripts: skip postinstall (esbuild native build). We don't need
+# esbuild at runtime — tsc compiles to plain JS executed by node.
+RUN pnpm install --frozen-lockfile=false --ignore-scripts
 
 COPY . .
 RUN pnpm build
@@ -21,7 +23,9 @@ RUN corepack enable && corepack prepare pnpm@11.1.1 --activate
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/drizzle ./drizzle
+# drizzle migrations directory (generated via `pnpm db:generate`).
+# Empty placeholder so the dir always exists; mounted/copied when migrations land.
+RUN mkdir -p ./drizzle
 
 EXPOSE 8080
 CMD ["node", "dist/index.js"]

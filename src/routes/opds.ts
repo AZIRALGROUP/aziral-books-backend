@@ -5,7 +5,10 @@
  *
  * Спека: https://specs.opds.io/opds-1.2
  */
+import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
+import { db, schema } from '../db/client.js';
+import { logger } from '../logger.js';
 import { booksIndex } from '../search/meili.js';
 
 export const opdsRoutes = new Hono();
@@ -173,4 +176,27 @@ opdsRoutes.get('/gutenberg', async (c) => {
   return c.body(acquisitionFeed('Project Gutenberg', '/gutenberg', result.hits), 200, {
     'Content-Type': 'application/atom+xml;profile=opds-catalog;kind=acquisition;charset=utf-8',
   });
+});
+
+/**
+ * Скачивание книги.
+ *
+ * Стратегия:
+ * - Для Gutenberg и т.п. публичных источников у нас есть `downloadUrl` —
+ *   редиректим клиента прямо на источник (нет смысла гонять трафик через нас).
+ * - В будущем для книг в R2/локальном хранилище — стримим из `STORAGE_LOCAL_PATH`.
+ */
+opdsRoutes.get('/books/:id/download', async (c) => {
+  const id = c.req.param('id');
+  const format = c.req.query('format') ?? 'epub';
+  const book = await db.query.books.findFirst({ where: eq(schema.books.id, id) });
+  if (!book) return c.json({ error: 'not_found' }, 404);
+
+  if (!book.downloadUrl) {
+    logger.warn({ bookId: id, format }, 'download requested but no source URL');
+    return c.json({ error: 'no_download_available', format }, 404);
+  }
+
+  // 302 — клиент пойдёт за файлом напрямую к источнику (Gutenberg и т.п.)
+  return c.redirect(book.downloadUrl, 302);
 });

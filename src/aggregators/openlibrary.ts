@@ -4,6 +4,7 @@
  * https://openlibrary.org/dev/docs/api/search
  */
 import { config } from '../config.js';
+import { fetchWithRetry } from './fetch.js';
 import type { AggregatedBook, Aggregator } from './types.js';
 
 type OLSearchDoc = {
@@ -35,7 +36,7 @@ export const openLibraryAggregator: Aggregator = {
       'fields',
       'key,title,subtitle,author_name,first_publish_year,publisher,language,isbn,cover_i,subject,ebook_access,has_fulltext,edition_count',
     );
-    const resp = await fetch(url, {
+    const resp = await fetchWithRetry(url, {
       headers: { 'User-Agent': 'AziralBooks/0.1 (+https://books.aziral.com)' },
     });
     if (!resp.ok) throw new Error(`openlibrary ${resp.status}`);

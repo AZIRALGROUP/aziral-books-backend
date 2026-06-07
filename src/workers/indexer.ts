@@ -107,17 +107,26 @@ async function run(): Promise<void> {
   }
 
   let total = 0;
-  for (let page = 1; page <= pages; page++) {
+  const startPage = Number(process.env.START_PAGE ?? '1');
+  for (let page = startPage; page < startPage + pages; page++) {
     logger.info({ source: sourceArg, page }, 'fetching page');
-    const books = await aggregator.fetchPage({ page });
-    for (const book of books) {
-      try {
-        const id = await upsertBook(book);
-        await indexInMeili(id, book);
-        total++;
-      } catch (err) {
-        logger.error({ err, sourceId: book.sourceId }, 'failed to upsert book');
+    try {
+      const books = await aggregator.fetchPage({ page });
+      for (const book of books) {
+        try {
+          const id = await upsertBook(book);
+          await indexInMeili(id, book);
+          total++;
+        } catch (err) {
+          logger.error({ err, sourceId: book.sourceId }, 'failed to upsert book');
+        }
       }
+    } catch (err) {
+      logger.error({ err, page }, 'page failed after retries — skipping');
+    }
+    // вежливая пауза перед следующей страницей
+    if (page < startPage + pages - 1) {
+      await new Promise((r) => setTimeout(r, 500));
     }
   }
   logger.info({ total }, 'indexing done');

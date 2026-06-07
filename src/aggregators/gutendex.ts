@@ -4,6 +4,7 @@
  * https://gutendex.com
  */
 import { config } from '../config.js';
+import { fetchWithRetry } from './fetch.js';
 import type { AggregatedBook, Aggregator } from './types.js';
 
 type GutendexBook = {
@@ -53,7 +54,9 @@ export const gutendexAggregator: Aggregator = {
     const url = new URL('/books', config.GUTENDEX_BASE);
     url.searchParams.set('page', String(page));
     if (modifiedSince) url.searchParams.set('mime_type', 'application/epub+zip');
-    const resp = await fetch(url, { headers: { 'User-Agent': 'AziralBooks/0.1 (+https://books.aziral.com)' } });
+    const resp = await fetchWithRetry(url, {
+      headers: { 'User-Agent': 'AziralBooks/0.1 (+https://books.aziral.com)' },
+    });
     if (!resp.ok) throw new Error(`gutendex ${resp.status}`);
     const data = (await resp.json()) as GutendexPage;
 
