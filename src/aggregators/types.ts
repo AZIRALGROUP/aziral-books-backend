@@ -1,5 +1,5 @@
 export type AggregatedBook = {
-  source: 'openlibrary' | 'gutenberg' | 'archive';
+  source: 'openlibrary' | 'gutenberg' | 'archive' | 'wikisource';
   sourceId: string;
   isbn10?: string | null;
   isbn13?: string | null;

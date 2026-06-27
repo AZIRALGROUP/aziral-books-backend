@@ -13,10 +13,12 @@ import { booksIndex, ensureBooksIndex, type BookSearchDoc } from '../search/meil
 import { gutendexAggregator } from '../aggregators/gutendex.js';
 import { openLibraryAggregator } from '../aggregators/openlibrary.js';
 import type { AggregatedBook, Aggregator } from '../aggregators/types.js';
+import { wikisourceAggregator } from '../aggregators/wikisource.js';
 
 const AGGREGATORS: Record<string, Aggregator> = {
   gutenberg: gutendexAggregator,
   openlibrary: openLibraryAggregator,
+  wikisource: wikisourceAggregator,
 };
 
 async function upsertBook(b: AggregatedBook): Promise<string> {
@@ -102,7 +104,7 @@ async function run(): Promise<void> {
   const pages = Number(process.env.PAGES ?? '1');
   const aggregator = AGGREGATORS[sourceArg];
   if (!aggregator) {
-    logger.error({ source: sourceArg }, 'unknown SOURCE — use gutenberg or openlibrary');
+    logger.error({ source: sourceArg }, 'unknown SOURCE — use gutenberg, openlibrary or wikisource');
     process.exit(1);
   }
 
