@@ -12,8 +12,7 @@ const envSchema = z.object({
   GUTENDEX_BASE: z.string().url().default('https://gutendex.com'),
   INTERNET_ARCHIVE_BASE: z.string().url().default('https://archive.org'),
   // Wikisource: legal full-text public-domain works. WSexport turns a wiki page
-  // into a downloadable EPUB. WIKISOURCE_LANG selects the subdomain (ru/kk/uk/…).
-  WIKISOURCE_LANG: z.string().default('ru'),
+  // into a downloadable EPUB. Per-author source/lang lives in wikisource-authors.
   WSEXPORT_BASE: z.string().url().default('https://ws-export.wmcloud.org'),
   STORAGE_BACKEND: z.enum(['local', 'r2']).default('local'),
   STORAGE_LOCAL_PATH: z.string().default('/var/aziral-books/storage'),

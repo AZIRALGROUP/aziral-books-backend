@@ -20,7 +20,7 @@
 import { config } from '../config.js';
 import { fetchWithRetry } from './fetch.js';
 import type { AggregatedBook, Aggregator } from './types.js';
-import { WIKISOURCE_RU_AUTHORS, type WikiAuthor } from './wikisource-authors.js';
+import { WIKISOURCE_AUTHORS, type WikiAuthor } from './wikisource-authors.js';
 
 const PL_LIMIT = 500; // MediaWiki max links per request
 const CONTINUE_CAP = 6; // safety cap: ≤ 3000 links per author
@@ -38,10 +38,6 @@ interface MwLinksResponse {
   continue?: { plcontinue?: string };
 }
 
-function apiBase(lang: string): string {
-  return `https://${lang}.wikisource.org/w/api.php`;
-}
-
 // "Война и мир (Толстой)" → "Война и мир". Strips a single trailing
 // parenthetical (Wikisource's author/disambiguation suffix).
 function cleanTitle(pageTitle: string): string {
@@ -55,20 +51,20 @@ function isRealWork(title: string): boolean {
   return !SKIP_PREFIXES.some((p) => head === p || title.startsWith(`${p} `));
 }
 
-function wsexportUrl(lang: string, pageTitle: string): string {
+function wsexportUrl(wsLang: string, pageTitle: string): string {
   const u = new URL(config.WSEXPORT_BASE);
-  u.searchParams.set('lang', lang);
+  u.searchParams.set('lang', wsLang);
   u.searchParams.set('format', 'epub-3');
   u.searchParams.set('page', pageTitle);
   return u.toString();
 }
 
-async function fetchAuthorWorks(lang: string, author: WikiAuthor): Promise<string[]> {
+async function fetchAuthorWorks(author: WikiAuthor): Promise<string[]> {
   const titles = new Set<string>();
   let plcontinue: string | undefined;
 
   for (let i = 0; i < CONTINUE_CAP; i++) {
-    const url = new URL(apiBase(lang));
+    const url = new URL(`https://${author.host}/w/api.php`);
     url.searchParams.set('action', 'query');
     url.searchParams.set('format', 'json');
     url.searchParams.set('prop', 'links');
@@ -101,25 +97,25 @@ async function fetchAuthorWorks(lang: string, author: WikiAuthor): Promise<strin
 export const wikisourceAggregator: Aggregator = {
   source: 'wikisource',
   async fetchPage({ page }): Promise<AggregatedBook[]> {
-    const lang = config.WIKISOURCE_LANG;
-    const author = WIKISOURCE_RU_AUTHORS[page - 1];
+    const author = WIKISOURCE_AUTHORS[page - 1];
     if (!author) return []; // past the end of the curated list — indexer stops
 
-    const works = await fetchAuthorWorks(lang, author);
+    const works = await fetchAuthorWorks(author);
+    const subject = author.lang === 'kk' ? 'Қазақ әдебиеті' : 'Русская литература';
 
     return works.map((pageTitle) => ({
       source: 'wikisource' as const,
-      sourceId: `${lang}:${pageTitle}`,
+      sourceId: `${author.wsLang}:${pageTitle}`,
       title: cleanTitle(pageTitle),
-      language: lang,
+      language: author.lang,
       hasFullText: true,
-      downloadUrl: wsexportUrl(lang, pageTitle),
+      downloadUrl: wsexportUrl(author.wsLang, pageTitle),
       formats: ['epub'],
       license: 'public_domain',
       popularity: 0,
       coverUrl: null,
       authors: [author.name],
-      subjects: ['Русская литература'],
+      subjects: [subject],
     }));
   },
 };
