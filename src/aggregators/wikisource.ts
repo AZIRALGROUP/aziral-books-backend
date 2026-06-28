@@ -59,6 +59,60 @@ function wsexportUrl(wsLang: string, pageTitle: string): string {
   return u.toString();
 }
 
+// Coarse literary form for the catalogue's section filter. Poetry and drama are
+// detected from a work's Wikisource categories (reliable for the bulk of poems
+// and plays); everything else — novels, stories, essays — defaults to prose,
+// which is correct for the major multi-part works whose index page carries no
+// form category (Анна Каренина, Преступление и наказание, …).
+export type WorkForm = 'Поэзия' | 'Проза' | 'Драматургия';
+
+function deriveForm(categories: string[], title: string): WorkForm {
+  const c = categories.join(' ').toLowerCase();
+  const t = title.toLowerCase();
+  if (/поэзия|стихотвор|стихи|поэма|сонет/.test(c) || /\((поэма|стихотворени)/.test(t)) {
+    return 'Поэзия';
+  }
+  if (/пьес|драматург|комеди|трагеди|драмы/.test(c) || /\((пьеса|комеди|траге|драма|водевиль)/.test(t)) {
+    return 'Драматургия';
+  }
+  return 'Проза';
+}
+
+const CAT_BATCH = 50; // MediaWiki max titles per query
+
+// Fetch each work's categories (batched) and map it to a literary form.
+async function fetchForms(host: string, titles: string[]): Promise<Map<string, WorkForm>> {
+  const forms = new Map<string, WorkForm>();
+  for (let i = 0; i < titles.length; i += CAT_BATCH) {
+    const batch = titles.slice(i, i + CAT_BATCH);
+    const body = new URLSearchParams({
+      action: 'query',
+      format: 'json',
+      prop: 'categories',
+      cllimit: '500',
+      clshow: '!hidden',
+      titles: batch.join('|'),
+    });
+    const resp = await fetchWithRetry(`https://${host}/w/api.php`, {
+      method: 'POST',
+      headers: {
+        'User-Agent': 'AziralBooks/0.1 (+https://books.aziral.com)',
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body,
+    });
+    if (!resp.ok) continue; // best-effort: missing categories just default to prose
+    const data = (await resp.json()) as {
+      query?: { pages?: Record<string, { title: string; categories?: Array<{ title: string }> }> };
+    };
+    for (const p of Object.values(data.query?.pages ?? {})) {
+      const cats = (p.categories ?? []).map((cat) => cat.title);
+      forms.set(p.title, deriveForm(cats, p.title));
+    }
+  }
+  return forms;
+}
+
 async function fetchAuthorWorks(author: WikiAuthor): Promise<string[]> {
   const titles = new Set<string>();
   let plcontinue: string | undefined;
@@ -101,7 +155,11 @@ export const wikisourceAggregator: Aggregator = {
     if (!author) return []; // past the end of the curated list — indexer stops
 
     const works = await fetchAuthorWorks(author);
-    const subject = author.lang === 'kk' ? 'Қазақ әдебиеті' : 'Русская литература';
+
+    // Russian works get a literary-form section (Проза/Поэзия/Драматургия) from
+    // their categories; Kazakh works (mostly Abai's poems) keep a single tag.
+    const forms =
+      author.lang === 'kk' ? new Map<string, WorkForm>() : await fetchForms(author.host, works);
 
     return works.map((pageTitle) => ({
       source: 'wikisource' as const,
@@ -115,7 +173,7 @@ export const wikisourceAggregator: Aggregator = {
       popularity: 0,
       coverUrl: null,
       authors: [author.name],
-      subjects: [subject],
+      subjects: author.lang === 'kk' ? ['Қазақ әдебиеті'] : [forms.get(pageTitle) ?? 'Проза'],
     }));
   },
 };
