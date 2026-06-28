@@ -8,6 +8,7 @@ const searchQuery = z.object({
   q: z.string().default(''),
   lang: z.string().optional(),
   author: z.string().optional(),
+  subject: z.string().optional(),
   has_full_text: z
     .string()
     .optional()
@@ -29,11 +30,12 @@ searchRoutes.get('/', async (c) => {
   if (!parsed.success) {
     return c.json({ error: 'invalid_query', details: parsed.error.flatten() }, 400);
   }
-  const { q, lang, author, has_full_text, page, limit, sort, facets } = parsed.data;
+  const { q, lang, author, subject, has_full_text, page, limit, sort, facets } = parsed.data;
 
   const filters: string[] = [];
   if (lang) filters.push(`language = "${filterValue(lang)}"`);
   if (author) filters.push(`authors = "${filterValue(author)}"`);
+  if (subject) filters.push(`subjects = "${filterValue(subject)}"`);
   if (has_full_text !== undefined) filters.push(`hasFullText = ${has_full_text}`);
 
   const sortRule =
