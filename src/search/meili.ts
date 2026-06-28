@@ -45,6 +45,9 @@ export async function ensureBooksIndex(): Promise<void> {
     ],
     sortableAttributes: ['publishYear', 'popularity'],
     rankingRules: ['words', 'typo', 'proximity', 'attribute', 'sort', 'exactness', 'popularity:desc'],
+    // Return the highest-count facet values (e.g. authors with the most works),
+    // not the default alphabetical slice that truncates before the big names.
+    faceting: { maxValuesPerFacet: 200, sortFacetValuesBy: { '*': 'count' } },
   });
 }
 
