@@ -34,7 +34,15 @@ export async function ensureBooksIndex(): Promise<void> {
   const index = meili.index<BookSearchDoc>(BOOKS_INDEX);
   await index.updateSettings({
     searchableAttributes: ['title', 'subtitle', 'authors', 'isbn13', 'isbn10', 'description'],
-    filterableAttributes: ['language', 'publishYear', 'subjects', 'hasFullText', 'license', 'formats'],
+    filterableAttributes: [
+      'language',
+      'publishYear',
+      'subjects',
+      'hasFullText',
+      'license',
+      'formats',
+      'authors',
+    ],
     sortableAttributes: ['publishYear', 'popularity'],
     rankingRules: ['words', 'typo', 'proximity', 'attribute', 'sort', 'exactness', 'popularity:desc'],
   });
