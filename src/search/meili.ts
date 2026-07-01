@@ -48,6 +48,9 @@ export async function ensureBooksIndex(): Promise<void> {
     // Return the highest-count facet values (e.g. authors with the most works),
     // not the default alphabetical slice that truncates before the big names.
     faceting: { maxValuesPerFacet: 200, sortFacetValuesBy: { '*': 'count' } },
+    // Default cap is 1000, which silently truncates estimatedTotalHits/pagination
+    // for broad queries once the corpus exceeds it.
+    pagination: { maxTotalHits: 20000 },
   });
 }
 
