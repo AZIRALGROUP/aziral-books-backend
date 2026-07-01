@@ -6,7 +6,7 @@
  *   pnpm index:sync                  # одна итерация
  *   SOURCE=gutenberg PAGES=5 pnpm index:sync
  */
-import { sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db, schema } from '../db/client.js';
 import { logger } from '../logger.js';
 import { booksIndex, ensureBooksIndex, type BookSearchDoc } from '../search/meili.js';
@@ -59,17 +59,32 @@ export async function upsertBook(b: AggregatedBook): Promise<string> {
     .returning({ id: schema.books.id });
   if (!row) throw new Error('upsert returned no row');
 
-  // Авторы
+  // Авторы. onConflictDoNothing().returning() only returns a row when the
+  // insert actually happened — on a conflict (author already exists, the
+  // common case after their first book) it returns nothing, so the id must
+  // be looked up separately. Without this, book_authors only ever got linked
+  // for whichever book introduced a new author, silently skipping the link
+  // for every subsequent book by that same author.
   for (const name of b.authors) {
-    const [a] = await db
+    const authorSourceId = `${b.source}:${name}`;
+    const [inserted] = await db
       .insert(schema.authors)
-      .values({ name, source: b.source, sourceId: `${b.source}:${name}` })
+      .values({ name, source: b.source, sourceId: authorSourceId })
       .onConflictDoNothing({ target: [schema.authors.source, schema.authors.sourceId] })
       .returning({ id: schema.authors.id });
-    if (a) {
+
+    const authorId =
+      inserted?.id ??
+      (
+        await db.query.authors.findFirst({
+          where: and(eq(schema.authors.source, b.source), eq(schema.authors.sourceId, authorSourceId)),
+        })
+      )?.id;
+
+    if (authorId) {
       await db
         .insert(schema.bookAuthors)
-        .values({ bookId: row.id, authorId: a.id })
+        .values({ bookId: row.id, authorId })
         .onConflictDoNothing();
     }
   }

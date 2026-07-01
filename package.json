@@ -17,6 +17,7 @@
     "index:sync": "tsx src/workers/indexer.ts",
     "backfill:gutenberg-authors": "tsx scripts/backfill-gutenberg-authors.ts",
     "resync:wikisource": "tsx scripts/resync-wikisource.ts",
+    "backfill:book-author-links": "tsx scripts/backfill-book-author-links.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
