@@ -4,6 +4,7 @@
  * https://gutendex.com
  */
 import { config } from '../config.js';
+import { normalizeGutenbergAuthorName } from './authorName.js';
 import { fetchWithRetry } from './fetch.js';
 import type { AggregatedBook, Aggregator } from './types.js';
 
@@ -74,7 +75,7 @@ export const gutendexAggregator: Aggregator = {
         formats,
         license: b.copyright === false ? 'public_domain' : b.copyright === true ? 'copyrighted' : null,
         popularity: b.download_count,
-        authors: b.authors.map((a) => a.name),
+        authors: b.authors.map((a) => normalizeGutenbergAuthorName(a.name)),
         subjects: b.subjects,
       };
     });

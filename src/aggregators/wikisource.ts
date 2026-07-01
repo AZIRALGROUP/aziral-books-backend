@@ -79,18 +79,39 @@ function deriveForm(categories: string[], title: string): WorkForm {
 }
 
 const CAT_BATCH = 50; // MediaWiki max titles per query
+const AUTHOR_NAMESPACE = 102; // ru.wikisource "Автор:" namespace
 
-// Fetch each work's categories (batched) and map it to a literary form.
-async function fetchForms(host: string, titles: string[]): Promise<Map<string, WorkForm>> {
+// A genuine work page never links to the "Автор:" namespace, but Wikisource
+// also carries bare-name stub/disambiguation pages for people (e.g. a critic
+// mentioned in an author's bio) whose only real content is a cross-reference
+// link to their own "Автор:" page. Those stubs get pulled in by the author
+// bio's outbound links same as real works, so they need a dedicated signal to
+// exclude — title shape alone can't tell "Джон Теннер" (a real Pushkin essay)
+// apart from "Владимир Спасович" (a critic's name, not Pushkin's work).
+// Empirically verified on ru.wikisource: 0/6 real works link to ns102,
+// while every sampled person-stub does (links to its own canonical Автор: page).
+const DISAMBIG_CATEGORY = 'Категория:Многозначные термины';
+
+interface WorkMeta {
+  forms: Map<string, WorkForm>;
+  noise: Set<string>; // author-stub / disambiguation pages misattributed as works
+}
+
+// Fetch each work's categories + outbound "Автор:" links (batched) to derive
+// its literary form and flag non-work noise (author stubs, disambig pages).
+async function fetchWorkMeta(host: string, titles: string[]): Promise<WorkMeta> {
   const forms = new Map<string, WorkForm>();
+  const noise = new Set<string>();
   for (let i = 0; i < titles.length; i += CAT_BATCH) {
     const batch = titles.slice(i, i + CAT_BATCH);
     const body = new URLSearchParams({
       action: 'query',
       format: 'json',
-      prop: 'categories',
+      prop: 'categories|links',
       cllimit: '500',
       clshow: '!hidden',
+      plnamespace: String(AUTHOR_NAMESPACE),
+      pllimit: '500',
       titles: batch.join('|'),
     });
     const resp = await fetchWithRetry(`https://${host}/w/api.php`, {
@@ -101,16 +122,24 @@ async function fetchForms(host: string, titles: string[]): Promise<Map<string, W
       },
       body,
     });
-    if (!resp.ok) continue; // best-effort: missing categories just default to prose
+    if (!resp.ok) continue; // best-effort: missing metadata just defaults to prose, kept
     const data = (await resp.json()) as {
-      query?: { pages?: Record<string, { title: string; categories?: Array<{ title: string }> }> };
+      query?: {
+        pages?: Record<
+          string,
+          { title: string; categories?: Array<{ title: string }>; links?: MwLink[] }
+        >;
+      };
     };
     for (const p of Object.values(data.query?.pages ?? {})) {
       const cats = (p.categories ?? []).map((cat) => cat.title);
       forms.set(p.title, deriveForm(cats, p.title));
+      const isAuthorStub = (p.links ?? []).length > 0; // links into ns102
+      const isDisambig = cats.includes(DISAMBIG_CATEGORY);
+      if (isAuthorStub || isDisambig) noise.add(p.title);
     }
   }
-  return forms;
+  return { forms, noise };
 }
 
 async function fetchAuthorWorks(author: WikiAuthor): Promise<string[]> {
@@ -154,12 +183,26 @@ export const wikisourceAggregator: Aggregator = {
     const author = WIKISOURCE_AUTHORS[page - 1];
     if (!author) return []; // past the end of the curated list — indexer stops
 
-    const works = await fetchAuthorWorks(author);
+    const allWorks = await fetchAuthorWorks(author);
 
-    // Russian works get a literary-form section (Проза/Поэзия/Драматургия) from
-    // their categories; Kazakh works (mostly Abai's poems) keep a single tag.
-    const forms =
-      author.lang === 'kk' ? new Map<string, WorkForm>() : await fetchForms(author.host, works);
+    // Russian works get a literary-form section (Проза/Поэзия/Драматургия) plus
+    // author-stub/disambiguation filtering from their categories + outbound
+    // links; Kazakh works (mostly Abai's poems) keep a single tag and skip the
+    // ns102 signal (no "Автор:" namespace convention on the multilingual wiki).
+    const { forms, noise } =
+      author.lang === 'kk'
+        ? { forms: new Map<string, WorkForm>(), noise: new Set<string>() }
+        : await fetchWorkMeta(author.host, allWorks);
+    const works = allWorks.filter((title) => !noise.has(title));
+
+    // Wikisource has no download-count analog, so every book got popularity 0
+    // and browse/search ordering across authors was arbitrary insertion order.
+    // WIKISOURCE_AUTHORS is curated in canon order (Пушкин, Толстой,
+    // Достоевский, … down to lesser-known names), so use the author's list
+    // position as a coarse, author-level popularity proxy — it doesn't rank
+    // one work over another by the SAME author, but it surfaces major authors'
+    // books above obscure ones when a shelf pools many authors together.
+    const popularity = WIKISOURCE_AUTHORS.length - (page - 1);
 
     return works.map((pageTitle) => ({
       source: 'wikisource' as const,
@@ -170,7 +213,7 @@ export const wikisourceAggregator: Aggregator = {
       downloadUrl: wsexportUrl(author.wsLang, pageTitle),
       formats: ['epub'],
       license: 'public_domain',
-      popularity: 0,
+      popularity,
       coverUrl: null,
       authors: [author.name],
       subjects: author.lang === 'kk' ? ['Қазақ әдебиеті'] : [forms.get(pageTitle) ?? 'Проза'],

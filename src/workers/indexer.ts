@@ -21,7 +21,7 @@ const AGGREGATORS: Record<string, Aggregator> = {
   wikisource: wikisourceAggregator,
 };
 
-async function upsertBook(b: AggregatedBook): Promise<string> {
+export async function upsertBook(b: AggregatedBook): Promise<string> {
   const [row] = await db
     .insert(schema.books)
     .values({
@@ -76,7 +76,7 @@ async function upsertBook(b: AggregatedBook): Promise<string> {
   return row.id;
 }
 
-async function indexInMeili(bookId: string, b: AggregatedBook): Promise<void> {
+export async function indexInMeili(bookId: string, b: AggregatedBook): Promise<void> {
   const doc: BookSearchDoc = {
     id: bookId,
     title: b.title,
@@ -135,7 +135,12 @@ async function run(): Promise<void> {
   process.exit(0);
 }
 
-run().catch((err) => {
-  logger.fatal({ err }, 'indexer crashed');
-  process.exit(1);
-});
+// Only auto-run when executed directly (`tsx src/workers/indexer.ts`), not
+// when `upsertBook`/`indexInMeili` are imported for reuse by other scripts
+// (e.g. scripts/resync-wikisource.ts).
+if (import.meta.url === `file://${process.argv[1]}`) {
+  run().catch((err) => {
+    logger.fatal({ err }, 'indexer crashed');
+    process.exit(1);
+  });
+}
