@@ -81,15 +81,20 @@ function deriveForm(categories: string[], title: string): WorkForm {
 const CAT_BATCH = 50; // MediaWiki max titles per query
 const AUTHOR_NAMESPACE = 102; // ru.wikisource "Автор:" namespace
 
-// A genuine work page never links to the "Автор:" namespace, but Wikisource
-// also carries bare-name stub/disambiguation pages for people (e.g. a critic
-// mentioned in an author's bio) whose only real content is a cross-reference
-// link to their own "Автор:" page. Those stubs get pulled in by the author
-// bio's outbound links same as real works, so they need a dedicated signal to
-// exclude — title shape alone can't tell "Джон Теннер" (a real Pushkin essay)
-// apart from "Владимир Спасович" (a critic's name, not Pushkin's work).
-// Empirically verified on ru.wikisource: 0/6 real works link to ns102,
-// while every sampled person-stub does (links to its own canonical Автор: page).
+// Wikisource carries bare-name stub/disambiguation pages for people (e.g. a
+// critic mentioned in an author's bio) whose only real content is a
+// cross-reference link to their own "Автор:" page. Those stubs get pulled in
+// by the author bio's outbound links same as real works, so they need a
+// dedicated signal to exclude — title shape alone can't tell "Джон Теннер"
+// (a real Pushkin essay) apart from "Владимир Спасович" (a critic's name,
+// not Pushkin's work).
+//
+// IMPORTANT: a genuine work page routinely links to its OWN author's "Автор:"
+// page too — richly-templated pages (e.g. "Анна Каренина (Толстой)") do this
+// via their header template. So the signal isn't "any ns102 link" (that
+// false-positived on exactly the best-curated major novels), it's "links to
+// an Автор: page OTHER than the one we're currently walking" — a person-stub
+// links to ITS OWN canonical page, never the current author's.
 const DISAMBIG_CATEGORY = 'Категория:Многозначные термины';
 
 interface WorkMeta {
@@ -99,7 +104,7 @@ interface WorkMeta {
 
 // Fetch each work's categories + outbound "Автор:" links (batched) to derive
 // its literary form and flag non-work noise (author stubs, disambig pages).
-async function fetchWorkMeta(host: string, titles: string[]): Promise<WorkMeta> {
+async function fetchWorkMeta(host: string, authorPage: string, titles: string[]): Promise<WorkMeta> {
   const forms = new Map<string, WorkForm>();
   const noise = new Set<string>();
   for (let i = 0; i < titles.length; i += CAT_BATCH) {
@@ -134,9 +139,9 @@ async function fetchWorkMeta(host: string, titles: string[]): Promise<WorkMeta> 
     for (const p of Object.values(data.query?.pages ?? {})) {
       const cats = (p.categories ?? []).map((cat) => cat.title);
       forms.set(p.title, deriveForm(cats, p.title));
-      const isAuthorStub = (p.links ?? []).length > 0; // links into ns102
+      const linksToOtherAuthor = (p.links ?? []).some((l) => l.title !== authorPage);
       const isDisambig = cats.includes(DISAMBIG_CATEGORY);
-      if (isAuthorStub || isDisambig) noise.add(p.title);
+      if (linksToOtherAuthor || isDisambig) noise.add(p.title);
     }
   }
   return { forms, noise };
@@ -192,7 +197,7 @@ export const wikisourceAggregator: Aggregator = {
     const { forms, noise } =
       author.lang === 'kk'
         ? { forms: new Map<string, WorkForm>(), noise: new Set<string>() }
-        : await fetchWorkMeta(author.host, allWorks);
+        : await fetchWorkMeta(author.host, author.page, allWorks);
     const works = allWorks.filter((title) => !noise.has(title));
 
     // Wikisource has no download-count analog, so every book got popularity 0
