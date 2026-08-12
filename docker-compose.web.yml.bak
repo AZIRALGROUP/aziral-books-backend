@@ -1,0 +1,31 @@
+# Aziral Books web frontend (Readest fork) — публикуется через
+# fenix-nginx (NPM) на books.aziral.com со сплитом локаций.
+#
+# Образ собирается в .github/workflows/docker-image.yml репозитория
+# AZIRALGROUP/aziral-books и публикуется в GHCR (multi-arch amd64/arm64).
+#
+# Использование (рядом с docker-compose.prod.yml бэкенда):
+#   docker compose -f docker-compose.prod.yml -f /tmp/aziral-books-web.yml up -d aziral-books-web
+
+services:
+  aziral-books-web:
+    image: ghcr.io/aziralgroup/aziral-books:latest
+    container_name: aziral-books-web
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      # Public env — те же значения, что были вшиты в бандл при сборке.
+      # Совпадение с build-args в workflow важно, чтобы next start не
+      # переопределял ничего в рантайме.
+      NEXT_PUBLIC_APP_PLATFORM: web
+      NEXT_PUBLIC_API_BASE_URL: https://books.aziral.com
+      # Supabase URL/anon key подставит docker-compose из .env (server-side).
+      NEXT_PUBLIC_SUPABASE_URL: ${SUPABASE_URL:-}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+    networks:
+      - aziral-network
+    # NPM (fenix-nginx) ходит сюда по hostname aziral-books-web на порт 3000
+
+networks:
+  aziral-network:
+    external: true
